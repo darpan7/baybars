@@ -17,7 +17,7 @@ import json
 # Local
 from .timber import get_logger
 # 3rd Party
-from confluent_kafka import Producer
+from confluent_kafka import KafkaException, Producer
 
 DEFAULT_TIMEOUT_IN_MILLISECONDS = 100
 
@@ -39,9 +39,26 @@ class KafkaPublisher:
     self.serializer = serializer
     self.logger = get_logger('{}'.format(self.kafka_topic_name))
 
-  def publish(self, message):
-    self.producer.produce(self.kafka_topic_name, 
-                          self.serializer(message))
+  def delivery_callback(self, err, msg):
+        '''
+        Default kafka callback function.
+        It is triggered by poll() or flush() \n
+        when a message has been successfully delivered
+        or permanently failed delivery (after retries).
+        '''
+        if err:
+            # Kafka permanently failed to produce message.
+            raise KafkaException(
+                'Kafka delivery failed permanently. Reason: {}'.format(err)
+            )
+
+  def publish(self, message, key=None, call_back=None):
+    self.producer.produce(
+        self.kafka_topic_name, 
+        self.serializer(message),
+        key,
+        callback=call_back or self.delivery_callback
+      )
     out = self.producer.flush()
     return out
 
